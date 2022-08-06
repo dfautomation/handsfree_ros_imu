@@ -55,7 +55,7 @@ def hex_to_ieee(len, buff):
 if __name__ == "__main__":
     rospy.init_node("imu")
 
-    port = rospy.get_param("~port", "/dev/ttyUSB0")
+    port = rospy.get_param("~port", "/dev/imu")
     baudrate = rospy.get_param("~baudrate", 921600)
 
     try:
@@ -72,8 +72,8 @@ if __name__ == "__main__":
         exit()
 
     else:
-        imu_pub = rospy.Publisher("handsfree/imu", Imu, queue_size=10)
-        mag_pub = rospy.Publisher("handsfree/mag", MagneticField, queue_size=10)
+        imu_pub = rospy.Publisher("imu/data", Imu, queue_size=10)
+        mag_pub = rospy.Publisher("mag/data", MagneticField, queue_size=10)
         sensor_data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         while not rospy.is_shutdown():
             count = hf_imu.inWaiting()
@@ -98,7 +98,7 @@ if __name__ == "__main__":
                     imu_msg = Imu()
 
                     imu_msg.header.stamp = stamp
-                    imu_msg.header.frame_id = "base_link"
+                    imu_msg.header.frame_id = "imu_link"
 
                     # 调用 eul_to_qua , 将欧拉角转四元数
                     imu_msg.orientation = eul_to_qua(rpy_degree)
@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
                     mag_msg = MagneticField()
                     mag_msg.header.stamp=stamp
-                    mag_msg.header.frame_id="base_link"
+                    mag_msg.header.frame_id="imu_link"
                     mag_msg.magnetic_field.x = sensor_data[6]
                     mag_msg.magnetic_field.y = sensor_data[7]
                     mag_msg.magnetic_field.z = sensor_data[8]

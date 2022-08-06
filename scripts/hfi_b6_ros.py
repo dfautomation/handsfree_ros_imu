@@ -57,7 +57,7 @@ def sb_sum_chech(byte_temp):
 if __name__ == "__main__":
     rospy.init_node("imu")
 
-    port = rospy.get_param("~port", "/dev/ttyUSB0")
+    port = rospy.get_param("~port", "/dev/imu")
     baudrate = rospy.get_param("~baudrate", 921600)
 
     try:
@@ -74,7 +74,7 @@ if __name__ == "__main__":
         exit()
 
     else:
-        imu_pub = rospy.Publisher("handsfree/imu", Imu, queue_size=10)
+        imu_pub = rospy.Publisher("imu/data", Imu, queue_size=10)
 
         receive_buffer = bytearray()
 
@@ -116,7 +116,7 @@ if __name__ == "__main__":
                                 # 校验和通过了的数据包才进行解析
                                 imu_msg = Imu()
                                 imu_msg.header.stamp = stamp
-                                imu_msg.header.frame_id = "base_link"
+                                imu_msg.header.frame_id = "imu_link"
                                 mag_msg = MagneticField()
                                 mag_msg.header.stamp = stamp
                                 mag_msg.header.frame_id = "base_link"
