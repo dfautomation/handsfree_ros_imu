@@ -5,6 +5,7 @@ import serial
 import struct
 import time
 import rospy
+import diagnostic_updater
 from geometry_msgs.msg import Quaternion
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import MagneticField
@@ -13,6 +14,17 @@ cov_orientation = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 cov_angular_velocity = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 cov_linear_acceleration = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
+diagnostic_orientation_roll = 0.0
+diagnostic_orientation_pitch = 0.0
+diagnostic_orientation_yaw = 0.0
+diagnostic_orientation_x = 0.0
+diagnostic_orientation_y = 0.0
+diagnostic_orientation_z = 0.0
+diagnostic_orientation_w = 0.0
+diagnostic_linear_x = 0.0
+diagnostic_linear_y = 0.0
+diagnostic_linear_z = 0.0
+connected = False;
 
 def eul_to_qua(Eular):
     eular_div = [0, 0, 0]
@@ -54,105 +66,154 @@ def sb_sum_chech(byte_temp):
             return False
 
 
+def handle_diagnostic_status(stat):
+
+    stat.add('Linear Acc X', diagnostic_linear_x)
+    stat.add('Linear Acc Y', diagnostic_linear_y)
+    stat.add('Linear Acc Z', diagnostic_linear_z)
+    stat.add('Orientation Roll', diagnostic_orientation_roll)
+    stat.add('Orientation Pitch', diagnostic_orientation_pitch)
+    stat.add('Orientation Yaw', diagnostic_orientation_yaw)
+    stat.add('Orientation X', diagnostic_orientation_x)
+    stat.add('Orientation Y', diagnostic_orientation_y)
+    stat.add('Orientation Z', diagnostic_orientation_z)
+    stat.add('Orientation W', diagnostic_orientation_w)
+
+    if connected:
+        stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
+    else:
+        stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
+
+    return stat
+
+
 if __name__ == "__main__":
     rospy.init_node("imu")
 
+    # setup diagnostic updater
+    updater = diagnostic_updater.Updater()
+    updater.setHardwareID("AGV05")
+    updater.add("Status", handle_diagnostic_status)
+
     port = rospy.get_param("~port", "/dev/imu")
     baudrate = rospy.get_param("~baudrate", 921600)
+    while not rospy.is_shutdown():
+        if not connected:
+            try:
+                hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
+                if hf_imu.isOpen():
+                    rospy.loginfo("imu connect success")
+                    connected = True
+                else:
+                    hf_imu.open()
+                    rospy.loginfo("imu is open")
 
-    try:
-        hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
-        if hf_imu.isOpen():
-            rospy.loginfo("imu connect success")
+            except Exception, e:
+                print e
+                rospy.loginfo("找不到 ttyUSB0,请检查 ium 是否和电脑连接")
+                updater.update()
+                time.sleep(1)
+                #exit()
+
         else:
-            hf_imu.open()
-            rospy.loginfo("imu is open")
+            imu_pub = rospy.Publisher("imu/data", Imu, queue_size=10)
 
-    except Exception, e:
-        print e
-        rospy.loginfo("找不到 ttyUSB0,请检查 ium 是否和电脑连接")
-        exit()
+            receive_buffer = bytearray()
 
-    else:
-        imu_pub = rospy.Publisher("imu/data", Imu, queue_size=10)
+            linear_acceleration_x = 0
+            linear_acceleration_y = 0
+            linear_acceleration_z = 0
+            angular_velocity_x = 0
+            angular_velocity_y = 0
+            angular_velocity_z = 0
 
-        receive_buffer = bytearray()
+            while not rospy.is_shutdown():
+                updater.update()
+                eul = []
+                try:
+                    count = hf_imu.inWaiting()
+                except Exception, e:
+                    print e
+                    rospy.loginfo("disconnected")
+                    connected = False
+                    break
 
-        linear_acceleration_x = 0
-        linear_acceleration_y = 0
-        linear_acceleration_z = 0
-        angular_velocity_x = 0
-        angular_velocity_y = 0
-        angular_velocity_z = 0
+                if count > 0:
+                    s = hf_imu.read(count)
+                    receive_buffer += s
+                stamp = rospy.get_rostime()
+                dataLen = len(receive_buffer)
+                if dataLen >= 11:
+                    # 去掉第1个包头前的数据
+                    headerPos = find_first_package(receive_buffer)
+                    if headerPos >= 0:
+                        if headerPos > 0:
+                            receive_buffer[0:headerPos] = b''
+                        # 取 Config.minPackageLen 整数倍长度的数据
+                        if dataLen - headerPos >= 11:
+                            packageCount = int((dataLen - headerPos) / 11)
+                            if packageCount > 0:
+                                cutLen = packageCount * 11
+                                temp = receive_buffer[0:cutLen]
+                                # 按16进制字符串的形式显示收到的内容
+                                receive_buffer[0:cutLen] = b''
 
-        while not rospy.is_shutdown():
-            eul = []
-            count = hf_imu.inWaiting()
-            if count > 0:
-                s = hf_imu.read(count)
-                receive_buffer += s
-            stamp = rospy.get_rostime()
-            dataLen = len(receive_buffer)
-            if dataLen >= 11:
-                # 去掉第1个包头前的数据
-                headerPos = find_first_package(receive_buffer)
-                if headerPos >= 0:
-                    if headerPos > 0:
-                        receive_buffer[0:headerPos] = b''
-                    # 取 Config.minPackageLen 整数倍长度的数据
-                    if dataLen - headerPos >= 11:
-                        packageCount = int((dataLen - headerPos) / 11)
-                        if packageCount > 0:
-                            cutLen = packageCount * 11
-                            temp = receive_buffer[0:cutLen]
-                            # 按16进制字符串的形式显示收到的内容
-                            receive_buffer[0:cutLen] = b''
+                                # 解析数据,逐个数据包进行解析
+                                for i in range(packageCount):
+                                    beginIdx = int(i * 11)
+                                    endIdx = int(i * 11 + 11)
+                                    byte_temp = temp[beginIdx:endIdx]
+                                    # 校验和通过了的数据包才进行解析
+                                    imu_msg = Imu()
+                                    imu_msg.header.stamp = stamp
+                                    imu_msg.header.frame_id = "imu_link"
+                                    mag_msg = MagneticField()
+                                    mag_msg.header.stamp = stamp
+                                    mag_msg.header.frame_id = "base_link"
 
-                            # 解析数据,逐个数据包进行解析
-                            for i in range(packageCount):
-                                beginIdx = int(i * 11)
-                                endIdx = int(i * 11 + 11)
-                                byte_temp = temp[beginIdx:endIdx]
-                                # 校验和通过了的数据包才进行解析
-                                imu_msg = Imu()
-                                imu_msg.header.stamp = stamp
-                                imu_msg.header.frame_id = "imu_link"
-                                mag_msg = MagneticField()
-                                mag_msg.header.stamp = stamp
-                                mag_msg.header.frame_id = "base_link"
+                                    if sb_sum_chech(byte_temp):
+                                        Data = list(struct.unpack("hhhh", byte_temp[2:10]))
+                                        # 加速度
+                                        if byte_temp[1] == 0x51:
+                                            linear_acceleration_x = Data[0] / 32768.0 * 16 * -9.8
+                                            linear_acceleration_y = Data[1] / 32768.0 * 16 * -9.8
+                                            linear_acceleration_z = Data[2] / 32768.0 * 16 * -9.8
 
-                                if sb_sum_chech(byte_temp):
-                                    Data = list(struct.unpack("hhhh", byte_temp[2:10]))
-                                    # 加速度
-                                    if byte_temp[1] == 0x51:
-                                        linear_acceleration_x = Data[0] / 32768.0 * 16 * -9.8
-                                        linear_acceleration_y = Data[1] / 32768.0 * 16 * -9.8
-                                        linear_acceleration_z = Data[2] / 32768.0 * 16 * -9.8
+                                        # 角速度
+                                        if byte_temp[1] == 0x52:
+                                            imu_msg.orientation_covariance = cov_orientation
+                                            angular_velocity_x = Data[0] / 32768.0 * 2000 * math.pi / 180
+                                            angular_velocity_y = Data[1] / 32768.0 * 2000 * math.pi / 180
+                                            angular_velocity_z = Data[2] / 32768.0 * 2000 * math.pi / 180
 
-                                    # 角速度
-                                    if byte_temp[1] == 0x52:
-                                        imu_msg.orientation_covariance = cov_orientation
-                                        angular_velocity_x = Data[0] / 32768.0 * 2000 * math.pi / 180
-                                        angular_velocity_y = Data[1] / 32768.0 * 2000 * math.pi / 180
-                                        angular_velocity_z = Data[2] / 32768.0 * 2000 * math.pi / 180
+                                        # 姿态角
+                                        if byte_temp[1] == 0x53:
+                                            for i in range(3):
+                                                eul.append(Data[i]/32768.0 * math.pi)
 
-                                    # 姿态角
-                                    if byte_temp[1] == 0x53:
-                                        for i in range(3):
-                                            eul.append(Data[i]/32768.0 * math.pi)
+                                            imu_msg.orientation = eul_to_qua(eul)
+                                            diagnostic_orientation_roll = eul[0]
+                                            diagnostic_orientation_pitch = eul[1]
+                                            diagnostic_orientation_yaw = eul[2]
+                                            diagnostic_orientation_x = imu_msg.orientation.x
+                                            diagnostic_orientation_y = imu_msg.orientation.y
+                                            diagnostic_orientation_z = imu_msg.orientation.z
+                                            diagnostic_orientation_w = imu_msg.orientation.w
 
-                                        imu_msg.orientation = eul_to_qua(eul)
+                                            imu_msg.linear_acceleration.x = linear_acceleration_x
+                                            imu_msg.linear_acceleration.y = linear_acceleration_y
+                                            imu_msg.linear_acceleration.z = linear_acceleration_z
 
-                                        imu_msg.linear_acceleration.x = linear_acceleration_x
-                                        imu_msg.linear_acceleration.y = linear_acceleration_y
-                                        imu_msg.linear_acceleration.z = linear_acceleration_z
+                                            diagnostic_linear_x = linear_acceleration_x
+                                            diagnostic_linear_y = linear_acceleration_y
+                                            diagnostic_linear_z = linear_acceleration_z
 
-                                        imu_msg.angular_velocity.x = angular_velocity_x
-                                        imu_msg.angular_velocity.y = angular_velocity_y
-                                        imu_msg.angular_velocity.z = angular_velocity_z
+                                            imu_msg.angular_velocity.x = angular_velocity_x
+                                            imu_msg.angular_velocity.y = angular_velocity_y
+                                            imu_msg.angular_velocity.z = angular_velocity_z
 
-                                        imu_msg.angular_velocity_covariance = cov_angular_velocity
-                                        imu_msg.linear_acceleration_covariance = cov_linear_acceleration
+                                            imu_msg.angular_velocity_covariance = cov_angular_velocity
+                                            imu_msg.linear_acceleration_covariance = cov_linear_acceleration
 
-                                        imu_pub.publish(imu_msg)
-            time.sleep(0.001)
+                                            imu_pub.publish(imu_msg)
+                time.sleep(0.001)
