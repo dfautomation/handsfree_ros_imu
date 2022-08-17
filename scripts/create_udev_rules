@@ -1,0 +1,16 @@
+#!/bin/bash
+
+echo ""
+echo "This script copies a udev rule to /etc to give permissions for users"
+echo "creating symlink for imu to /dev/imu"
+echo ""
+
+sudo cp `rospack find handsfree_ros_imu`/udev/10-imu.rules /etc/udev/rules.d
+
+
+echo ""
+echo "Restarting udev"
+echo ""
+sudo service udev reload
+sudo service udev restart
+
