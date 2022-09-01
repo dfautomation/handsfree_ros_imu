@@ -5,23 +5,34 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  diagnostic_updater
+)
+
+find_package(Boost REQUIRED COMPONENTS
+  system
+  chrono
+  thread
 )
 
 catkin_package()
 
+###########
+## Build ##
+###########
+
 include_directories(
   ${catkin_INCLUDE_DIRS}
-)
-
-install(DIRECTORY demo driver robot_para rviz
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  ${Boost_INCLUDE_DIRS}
 )
 
 #############
 ## Install ##
 #############
 
-install(PROGRAMS scripts/create_udev_rules
+install(PROGRAMS
+  scripts/create_udev_rules
+  scripts/hfi_b6_ros.py
+  scripts/hfi_a9_ros.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 install(FILES udev/10-imu.rules
