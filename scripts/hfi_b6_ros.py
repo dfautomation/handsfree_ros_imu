@@ -80,7 +80,7 @@ def handleSerialData(raw_data):
         stamp = rospy.get_rostime()
 
         imu_msg.header.stamp = stamp
-        imu_msg.header.frame_id = "base_link"
+        # imu_msg.header.frame_id = "base_link"
 
 
         angle_radian = [angle_degree[i] * math.pi / 180 for i in range(3)]
@@ -119,7 +119,9 @@ if __name__ == "__main__":
     rospy.init_node("imu")
     port = rospy.get_param("~port", "/dev/ttyUSB0")
     baudrate = rospy.get_param("~baudrate", 921600)
+    frame_id = rospy.get_param("~frame_id", "base_link")
     imu_msg = Imu()
+    imu_msg.header.frame_id = frame_id
     try:
         hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
         if hf_imu.isOpen():
