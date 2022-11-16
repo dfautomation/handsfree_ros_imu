@@ -4,7 +4,7 @@
 
 1. 插上 IMU 的 USB 设备，检查电脑能否识别到 `Silicon Labs CP210x USB to UART Bridge（COM*）`\* 指任意数字。如果有多个 `Silicon Labs CP210x USB to UART Bridge（COM*）` 请重新拔出一下 IMU 的 USB，记一下 IMU 被电脑识别到的 COM 口是多少。
 
-   ![](./img/com3.jpg)
+   ![](./img/win_com3.jpg)
 
 2. 进入脚本目录，修改对应的 python 脚本中 COM3（脚本默认用的 COM3） 为你电脑识别出来的数字
 
