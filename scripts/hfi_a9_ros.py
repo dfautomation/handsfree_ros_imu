@@ -52,8 +52,9 @@ def handleSerialData(raw_data):
     global buff, key, angle_degree, magnetometer, acceleration, angularVelocity, pub_flag, data_right_count
 
     if data_right_count > 200000:
-        print("该设备传输数据错误，退出")
-        exit(0)
+        raise Exception('Invalid data')
+        # print("该设备传输数据错误，退出")
+        # exit(0)
 
 
     if python_version == '2':
@@ -85,18 +86,21 @@ def handleSerialData(raw_data):
                 acceleration = data[4:7]
                 magnetometer = data[7:10]
             else:
-                print('校验失败')
+                # print('校验失败')
+                rospy.logwarn('Checksum error (%s)' % hex(buff[2]))
             pub_flag[0] = False
         elif buff[2] == 0x14 and pub_flag[1]:
             if checkSum(data_buff[2:23], data_buff[23:25]):
                 data = hex_to_ieee(data_buff[7:23])
                 angle_degree = data[1:4]
             else:
-                print('校验失败')
+                # print('校验失败')
+                rospy.logwarn('Checksum error (%s)' % hex(buff[2]))
             pub_flag[1] = False
         else:
-            print("该数据处理类没有提供该 " + str(buff[2]) + " 的解析")
-            print("或数据错误")
+            # print("该数据处理类没有提供该 " + str(buff[2]) + " 的解析")
+            # print("或数据错误")
+            rospy.logwarn('Unknown (%s)' % hex(buff[2]))
             buff = {}
             key = 0
 
@@ -160,7 +164,7 @@ data_right_count = 0
 if __name__ == "__main__":
     python_version = platform.python_version()[0]
 
-    find_ttyUSB()
+    # find_ttyUSB()
     rospy.init_node("imu")
     port = rospy.get_param("~port", "/dev/ttyUSB0")
     baudrate = rospy.get_param("~baudrate", 921600)
@@ -181,13 +185,16 @@ if __name__ == "__main__":
             try:
                 hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
                 if hf_imu.isOpen():
-                    rospy.loginfo("\033[32m串口打开成功...\033[0m")
+                    # rospy.loginfo("\033[32m串口打开成功...\033[0m")
+                    rospy.loginfo('%s opened' % port)
                 else:
                     hf_imu.open()
-                    rospy.loginfo("\033[32m打开串口成功...\033[0m")
+                    # rospy.loginfo("\033[32m打开串口成功...\033[0m")
+                    rospy.loginfo('Open %s success' % port)
             except Exception as e:
-                print(e)
-                rospy.loginfo("\033[31m串口打开失败\033[0m")
+                # print(e)
+                # rospy.loginfo("\033[31m串口打开失败\033[0m")
+                rospy.logerr_once('Open %s failed: %s' % (port, e))
                 if hf_imu:
                     hf_imu.close()
                     hf_imu = None
@@ -196,17 +203,18 @@ if __name__ == "__main__":
         else:
             try:
                 buff_count = hf_imu.inWaiting()
+                if buff_count > 0:
+                    buff_data = hf_imu.read(buff_count)
+                    for i in range(0, buff_count):
+                        handleSerialData(buff_data[i])
             except Exception as e:
-                print("exception:" + str(e))
-                print("imu 失去连接，接触不良，或断线")
+                # print("exception:" + str(e))
+                # print("imu 失去连接，接触不良，或断线")
+                rospy.logerr('%s disconnected: %s' % (port, e))
                 if hf_imu:
                     hf_imu.close()
                     hf_imu = None
                 rospy.sleep(1.)
                 # exit(0)
             else:
-                if buff_count > 0:
-                    buff_data = hf_imu.read(buff_count)
-                    for i in range(0, buff_count):
-                        handleSerialData(buff_data[i])
                 r.sleep()
