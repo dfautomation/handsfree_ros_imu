@@ -133,36 +133,48 @@ if __name__ == "__main__":
     rospy.init_node("imu")
     port = rospy.get_param("~port", "/dev/ttyUSB0")
     baudrate = rospy.get_param("~baudrate", 921600)
+    rate = rospy.get_param("~rate", 250) # 250hz
     frame_id = rospy.get_param("~frame_id", "base_link")
     imu_msg = Imu()
     imu_msg.header.frame_id = frame_id
     mag_msg = MagneticField()
     mag_msg.header.frame_id = frame_id
-    try:
-        hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
-        if hf_imu.isOpen():
-            rospy.loginfo("\033[32m串口打开成功...\033[0m")
-        else:
-            hf_imu.open()
-            rospy.loginfo("\033[32m打开串口成功...\033[0m")
-    except Exception as e:
-        print(e)
-        rospy.loginfo("\033[31m串口打开失败\033[0m")
-        exit(0)
-    else:
-        imu_pub = rospy.Publisher("handsfree/imu", Imu, queue_size=10)
-        mag_pub = rospy.Publisher("handsfree/mag", MagneticField, queue_size=10)
+    imu_pub = rospy.Publisher("handsfree/imu", Imu, queue_size=10)
+    mag_pub = rospy.Publisher("handsfree/mag", MagneticField, queue_size=10)
 
-        while not rospy.is_shutdown():
+    r = rospy.Rate(rate)
+    hf_imu = None
+    while not rospy.is_shutdown():
+        if not hf_imu:
+            try:
+                hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
+                if hf_imu.isOpen():
+                    rospy.loginfo("\033[32m串口打开成功...\033[0m")
+                else:
+                    hf_imu.open()
+                    rospy.loginfo("\033[32m打开串口成功...\033[0m")
+            except Exception as e:
+                print(e)
+                rospy.loginfo("\033[31m串口打开失败\033[0m")
+                if hf_imu:
+                    hf_imu.close()
+                    hf_imu = None
+                rospy.sleep(1.)
+                # exit(0)
+        else:
             try:
                 buff_count = hf_imu.inWaiting()
             except Exception as e:
                 print("exception:" + str(e))
                 print("imu 失去连接，接触不良，或断线")
-                exit(0)
+                if hf_imu:
+                    hf_imu.close()
+                    hf_imu = None
+                rospy.sleep(1.)
+                # exit(0)
             else:
                 if buff_count > 0:
                     buff_data = hf_imu.read(buff_count)
                     for i in range(0, buff_count):
                         handleSerialData(buff_data[i])
-
+                r.sleep()
