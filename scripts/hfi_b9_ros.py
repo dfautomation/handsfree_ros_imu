@@ -3,6 +3,7 @@
 import serial
 import struct
 import rospy
+import diagnostic_updater
 import math
 import platform
 import serial.tools.list_ports
@@ -121,6 +122,26 @@ def handleSerialData(raw_data):
         mag_pub.publish(mag_msg)
 
 
+def handle_diagnostic_status(stat):
+    stat.add('Linear Acc X', imu_msg.linear_acceleration.x)
+    stat.add('Linear Acc Y', imu_msg.linear_acceleration.y)
+    stat.add('Linear Acc Z', imu_msg.linear_acceleration.z)
+    stat.add('Orientation Roll', angle_degree[0])
+    stat.add('Orientation Pitch', angle_degree[1])
+    stat.add('Orientation Yaw', angle_degree[2])
+    stat.add('Orientation X', imu_msg.orientation.x)
+    stat.add('Orientation Y', imu_msg.orientation.y)
+    stat.add('Orientation Z', imu_msg.orientation.z)
+    stat.add('Orientation W', imu_msg.orientation.w)
+
+    if hf_imu:
+        stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
+    else:
+	stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
+
+    return stat
+
+
 key = 0
 flag = 0
 buff = {}
@@ -136,6 +157,12 @@ if __name__ == "__main__":
 
     # find_ttyUSB()
     rospy.init_node("imu")
+
+    # setup diagnostic updater
+    updater = diagnostic_updater.Updater()
+    updater.setHardwareID("AGV05")
+    updater.add("Status", handle_diagnostic_status)
+
     port = rospy.get_param("~port", "/dev/ttyUSB0")
     baudrate = rospy.get_param("~baudrate", 921600)
     rate = rospy.get_param("~rate", 250) # 250hz
@@ -150,6 +177,7 @@ if __name__ == "__main__":
     r = rospy.Rate(rate)
     hf_imu = None
     while not rospy.is_shutdown():
+        updater.update()
         if not hf_imu:
             try:
                 hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)

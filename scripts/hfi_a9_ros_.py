@@ -3,7 +3,6 @@
 import serial
 import struct
 import rospy
-import diagnostic_updater
 import math
 import platform
 import serial.tools.list_ports
@@ -53,9 +52,8 @@ def handleSerialData(raw_data):
     global buff, key, angle_degree, magnetometer, acceleration, angularVelocity, pub_flag, data_right_count
 
     if data_right_count > 200000:
-        raise Exception('Invalid data')
-        # print("该设备传输数据错误，退出")
-        # exit(0)
+        print("该设备传输数据错误，退出")
+        exit(0)
 
 
     if python_version == '2':
@@ -87,21 +85,18 @@ def handleSerialData(raw_data):
                 acceleration = data[4:7]
                 magnetometer = data[7:10]
             else:
-                # print('校验失败')
-                rospy.logwarn('Checksum error (%s)' % hex(buff[2]))
+                print('校验失败')
             pub_flag[0] = False
         elif buff[2] == 0x14 and pub_flag[1]:
             if checkSum(data_buff[2:23], data_buff[23:25]):
                 data = hex_to_ieee(data_buff[7:23])
                 angle_degree = data[1:4]
             else:
-                # print('校验失败')
-                rospy.logwarn('Checksum error (%s)' % hex(buff[2]))
+                print('校验失败')
             pub_flag[1] = False
         else:
-            # print("该数据处理类没有提供该 " + str(buff[2]) + " 的解析")
-            # print("或数据错误")
-            rospy.logwarn('Unknown (%s)' % hex(buff[2]))
+            print("该数据处理类没有提供该 " + str(buff[2]) + " 的解析")
+            print("或数据错误")
             buff = {}
             key = 0
 
@@ -113,10 +108,10 @@ def handleSerialData(raw_data):
         stamp = rospy.get_rostime()
 
         imu_msg.header.stamp = stamp
-        # imu_msg.header.frame_id = "base_link"
+        imu_msg.header.frame_id = "imu_link"
 
         mag_msg.header.stamp = stamp
-        # mag_msg.header.frame_id = "base_link"
+        mag_msg.header.frame_id = "imu_link"
 
         angle_radian = [angle_degree[i] * math.pi / 180 for i in range(3)]
         qua = quaternion_from_euler(angle_radian[0], -angle_radian[1], -angle_radian[2])
@@ -151,26 +146,6 @@ def handleSerialData(raw_data):
         mag_pub.publish(mag_msg)
 
 
-def handle_diagnostic_status(stat):
-    stat.add('Linear Acc X', imu_msg.linear_acceleration.x)
-    stat.add('Linear Acc Y', imu_msg.linear_acceleration.y)
-    stat.add('Linear Acc Z', imu_msg.linear_acceleration.z)
-    stat.add('Orientation Roll', angle_degree[0])
-    stat.add('Orientation Pitch', angle_degree[1])
-    stat.add('Orientation Yaw', angle_degree[2])
-    stat.add('Orientation X', imu_msg.orientation.x)
-    stat.add('Orientation Y', imu_msg.orientation.y)
-    stat.add('Orientation Z', imu_msg.orientation.z)
-    stat.add('Orientation W', imu_msg.orientation.w)
-
-    if hf_imu:
-        stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
-    else:
-	stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
-
-    return stat
-
-
 key = 0
 flag = 0
 buff = {}
@@ -185,64 +160,37 @@ data_right_count = 0
 if __name__ == "__main__":
     python_version = platform.python_version()[0]
 
-    # find_ttyUSB()
+    find_ttyUSB()
     rospy.init_node("imu")
-
-    # setup diagnostic updater
-    updater = diagnostic_updater.Updater()
-    updater.setHardwareID("AGV05")
-    updater.add("Status", handle_diagnostic_status)
-
-    port = rospy.get_param("~port", "/dev/ttyUSB0")
+    port = rospy.get_param("~port", "/dev/imu")
     baudrate = rospy.get_param("~baudrate", 921600)
     gra_normalization = rospy.get_param("~gra_normalization", True)
-    rate = rospy.get_param("~rate", 333) # 333hz
-    frame_id = rospy.get_param("~frame_id", "base_link")
     imu_msg = Imu()
-    imu_msg.header.frame_id = frame_id
     mag_msg = MagneticField()
-    mag_msg.header.frame_id = frame_id
-    imu_pub = rospy.Publisher("handsfree/imu", Imu, queue_size=10)
-    mag_pub = rospy.Publisher("handsfree/mag", MagneticField, queue_size=10)
-
-    r = rospy.Rate(rate)
-    hf_imu = None
-    while not rospy.is_shutdown():
-        updater.update()
-        if not hf_imu:
-            try:
-                hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
-                if hf_imu.isOpen():
-                    # rospy.loginfo("\033[32m串口打开成功...\033[0m")
-                    rospy.loginfo('%s opened' % port)
-                else:
-                    hf_imu.open()
-                    # rospy.loginfo("\033[32m打开串口成功...\033[0m")
-                    rospy.loginfo('Open %s success' % port)
-            except Exception as e:
-                # print(e)
-                # rospy.loginfo("\033[31m串口打开失败\033[0m")
-                rospy.logerr_once('Open %s failed: %s' % (port, e))
-                if hf_imu:
-                    hf_imu.close()
-                    hf_imu = None
-                rospy.sleep(1.)
-                # exit(0)
+    try:
+        hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
+        if hf_imu.isOpen():
+            rospy.loginfo("\033[32m串口打开成功...\033[0m")
         else:
+            hf_imu.open()
+            rospy.loginfo("\033[32m打开串口成功...\033[0m")
+    except Exception as e:
+        print(e)
+        rospy.loginfo("\033[31m串口打开失败\033[0m")
+        exit(0)
+    else:
+        imu_pub = rospy.Publisher("imu/data", Imu, queue_size=10)
+        mag_pub = rospy.Publisher("mag/data", MagneticField, queue_size=10)
+
+        while not rospy.is_shutdown():
             try:
                 buff_count = hf_imu.inWaiting()
+            except Exception as e:
+                print("exception:" + str(e))
+                print("imu 失去连接，接触不良，或断线")
+                exit(0)
+            else:
                 if buff_count > 0:
                     buff_data = hf_imu.read(buff_count)
                     for i in range(0, buff_count):
                         handleSerialData(buff_data[i])
-            except Exception as e:
-                # print("exception:" + str(e))
-                # print("imu 失去连接，接触不良，或断线")
-                rospy.logerr('%s disconnected: %s' % (port, e))
-                if hf_imu:
-                    hf_imu.close()
-                    hf_imu = None
-                rospy.sleep(1.)
-                # exit(0)
-            else:
-                r.sleep()
