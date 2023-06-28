@@ -4,6 +4,8 @@ import serial
 import struct
 import rospy
 import diagnostic_updater
+import dynamic_reconfigure.server
+import handsfree_ros_imu.cfg.HandsfreeRosImuConfig
 import math
 import platform
 import serial.tools.list_ports
@@ -11,6 +13,7 @@ from sensor_msgs.msg import Imu
 from sensor_msgs.msg import MagneticField
 from tf.transformations import quaternion_from_euler
 
+detail_diagnostic_enable = False
 
 # 查找 ttyUSB* 设备
 def find_ttyUSB():
@@ -152,16 +155,21 @@ def handleSerialData(raw_data):
 
 
 def handle_diagnostic_status(stat):
-    stat.add('Linear Acc X', imu_msg.linear_acceleration.x)
-    stat.add('Linear Acc Y', imu_msg.linear_acceleration.y)
-    stat.add('Linear Acc Z', imu_msg.linear_acceleration.z)
-    stat.add('Orientation Roll', angle_degree[0])
-    stat.add('Orientation Pitch', angle_degree[1])
-    stat.add('Orientation Yaw', angle_degree[2])
-    stat.add('Orientation X', imu_msg.orientation.x)
-    stat.add('Orientation Y', imu_msg.orientation.y)
-    stat.add('Orientation Z', imu_msg.orientation.z)
-    stat.add('Orientation W', imu_msg.orientation.w)
+    global detail_diagnostic_enable
+
+    if detail_diagnostic_enable:
+        stat.add('Linear Acc X', imu_msg.linear_acceleration.x)
+        stat.add('Linear Acc Y', imu_msg.linear_acceleration.y)
+        stat.add('Linear Acc Z', imu_msg.linear_acceleration.z)
+        stat.add('Orientation Roll', angle_degree[0])
+        stat.add('Orientation Pitch', angle_degree[1])
+        stat.add('Orientation Yaw', angle_degree[2])
+        stat.add('Orientation X', imu_msg.orientation.x)
+        stat.add('Orientation Y', imu_msg.orientation.y)
+        stat.add('Orientation Z', imu_msg.orientation.z)
+        stat.add('Orientation W', imu_msg.orientation.w)
+    else:
+        stat.add('Orientation Yaw', angle_degree[2])
 
     if hf_imu:
         stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
@@ -170,6 +178,11 @@ def handle_diagnostic_status(stat):
 
     return stat
 
+def handle_config(config, level):
+    global detail_diagnostic_enable
+    rospy.loginfo('Configuration received.')
+    detail_diagnostic_enable = config.detail_diagnostic_enable
+    return config
 
 key = 0
 flag = 0
@@ -187,6 +200,9 @@ if __name__ == "__main__":
 
     # find_ttyUSB()
     rospy.init_node("imu")
+
+    # setup dynamic reconfigure server
+    dyncfg_server = dynamic_reconfigure.server.Server(handsfree_ros_imu.cfg.HandsfreeRosImuConfig, handle_config)
 
     # setup diagnostic updater
     updater = diagnostic_updater.Updater()

@@ -2,9 +2,14 @@ cmake_minimum_required(VERSION 2.8.3)
 project(handsfree_ros_imu)
 
 find_package(catkin REQUIRED COMPONENTS
+  dynamic_reconfigure
   roscpp
   rospy
   std_msgs
+)
+
+generate_dynamic_reconfigure_options(
+  cfg/HandsfreeRosImu.cfg
 )
 
 catkin_package()
