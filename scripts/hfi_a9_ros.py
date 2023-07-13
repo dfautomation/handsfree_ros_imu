@@ -181,7 +181,7 @@ def handle_diagnostic_status(stat):
 def handle_config(config, level):
     global detail_diagnostic_enable
     rospy.loginfo('Configuration received.')
-    detail_diagnostic_enable = config.detail_diagnostic_enable
+    detail_diagnostic_enable = config.detail_diagnostic_enable_
     return config
 
 key = 0
