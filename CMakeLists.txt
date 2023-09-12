@@ -26,7 +26,7 @@ install(DIRECTORY demo launch rviz udev
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
-install(PROGRAMS
+catkin_install_python(PROGRAMS
   scripts/create_udev_rules
   scripts/display_3D_visualization.py
   scripts/get_imu_rpy.py
