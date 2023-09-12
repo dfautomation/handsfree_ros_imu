@@ -174,7 +174,7 @@ def handle_diagnostic_status(stat):
     if hf_imu:
         stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
     else:
-	stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
+        stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
 
     return stat
 
