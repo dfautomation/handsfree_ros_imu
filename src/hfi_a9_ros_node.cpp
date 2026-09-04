@@ -17,6 +17,11 @@ static bool detail_diagnostic_enable = false;
 static sensor_msgs::Imu imu_msg;
 static double angle_degree[3] = {};
 static bool serial_connected = false;
+static bool data_streaming = false;
+
+// The device streams continuously, so a silent port means the link is dead even
+// though the file descriptor is still open (e.g. USB re-enumeration).
+static const double data_timeout = 1.0;
 
 static uint16_t crc16_modbus(const uint8_t* data, size_t len)
 {
@@ -146,10 +151,12 @@ static void diagnostic_callback(diagnostic_updater::DiagnosticStatusWrapper& sta
         stat.addf("Orientation Yaw", "%f", angle_degree[2]);
     }
 
-    if (serial_connected)
-        stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
-    else
+    if (!serial_connected)
         stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU disconnected");
+    else if (!data_streaming)
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "IMU not streaming");
+    else
+        stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
 }
 
 static void reconfigure_callback(handsfree_ros_imu::HandsfreeRosImuConfig& config, uint32_t)
@@ -199,6 +206,7 @@ int main(int argc, char** argv)
     double magnetometer[3] = {};
     bool pub_flag[2] = {true, true};
     int data_right_count = 0;
+    ros::Time last_data = ros::Time::now();
 
     while (ros::ok())
     {
@@ -210,13 +218,16 @@ int main(int argc, char** argv)
             if (fd >= 0)
             {
                 serial_connected = true;
+                last_data = ros::Time::now();
                 ROS_INFO("%s opened", port.c_str());
             }
             else
             {
                 serial_connected = false;
+                data_streaming = false;
                 ROS_ERROR_ONCE("Open %s failed: %s", port.c_str(), strerror(errno));
                 ros::Duration(1.0).sleep();
+                ros::spinOnce();
                 continue;
             }
         }
@@ -235,15 +246,32 @@ int main(int argc, char** argv)
             close(fd);
             fd = -1;
             serial_connected = false;
+            data_streaming = false;
             ros::Duration(1.0).sleep();
+            ros::spinOnce();
             continue;
         }
         else if (n == 0)
         {
+            // A hung up tty (device unplugged or re-enumerated) reads as EOF
+            // forever, so treat a silent port as a disconnection and reopen it.
+            if ((ros::Time::now() - last_data).toSec() > data_timeout)
+            {
+                ROS_ERROR("%s stopped streaming, reconnecting", port.c_str());
+                close(fd);
+                fd = -1;
+                serial_connected = false;
+                data_streaming = false;
+                key = 0;
+                data_right_count = 0;
+            }
             loop_rate.sleep();
             ros::spinOnce();
             continue;
         }
+
+        last_data = ros::Time::now();
+        data_streaming = true;
 
         for (int i = 0; i < n; ++i)
         {
