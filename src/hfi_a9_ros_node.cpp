@@ -274,6 +274,14 @@ int main(int argc, char** argv)
                 key = 0;
                 continue;
             }
+            // The length byte is attacker/noise controlled, so reject a frame
+            // that would not fit before it can run past the end of buff.
+            if (buff[2] + 5 > static_cast<int>(sizeof(buff)))
+            {
+                ROS_WARN("Invalid length (0x%02x)", buff[2]);
+                key = 0;
+                continue;
+            }
             if (key < buff[2] + 5)
                 continue;
 
