@@ -127,10 +127,12 @@ def handle_diagnostic_status(stat):
     else:
         stat.add('Orientation Yaw', angle_degree[2])
 
-    if hf_imu:
-        stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
-    else:
+    if not hf_imu:
         stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU disconnected')
+    elif (rospy.get_rostime() - last_data).to_sec() > data_timeout:
+        stat.summary(diagnostic_updater.DiagnosticStatus.ERROR, 'IMU not streaming')
+    else:
+        stat.summary(diagnostic_updater.DiagnosticStatus.OK, 'OK')
 
     return stat
 
@@ -174,11 +176,16 @@ if __name__ == "__main__":
 
     r = rospy.Rate(rate)
     hf_imu = None
+    # The device streams continuously, so a silent port means the link is dead
+    # even though the handle is still open.
+    data_timeout = 1.0
+    last_data = rospy.get_rostime()
     while not rospy.is_shutdown():
         updater.update()
         if not hf_imu:
             try:
                 hf_imu = serial.Serial(port=port, baudrate=baudrate, timeout=0.5)
+                last_data = rospy.get_rostime()
                 if hf_imu.isOpen():
                     # rospy.loginfo("\033[32m串口打开成功...\033[0m")
                     rospy.loginfo('%s opened' % port)
@@ -209,7 +216,20 @@ if __name__ == "__main__":
                 if hf_imu:
                     hf_imu.close()
                     hf_imu = None
+                # Reset the parser state so the reopened port resyncs cleanly.
+                key = 0
+                buff = {}
                 rospy.sleep(1.)
                 # exit(0)
             else:
+                if buff_count > 0:
+                    last_data = rospy.get_rostime()
+                elif (rospy.get_rostime() - last_data).to_sec() > data_timeout:
+                    # The device streams continuously, so a silent but still
+                    # open port means the link is dead. Reopen it.
+                    rospy.logerr('%s stopped streaming, reconnecting' % port)
+                    hf_imu.close()
+                    hf_imu = None
+                    key = 0
+                    buff = {}
                 r.sleep()
