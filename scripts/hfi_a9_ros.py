@@ -258,6 +258,11 @@ if __name__ == "__main__":
                 if hf_imu:
                     hf_imu.close()
                     hf_imu = None
+                # Reset the parser state, otherwise a tripped data_right_count
+                # keeps raising on every byte and the node never recovers.
+                data_right_count = 0
+                key = 0
+                buff = {}
                 rospy.sleep(1.)
                 # exit(0)
             else:
